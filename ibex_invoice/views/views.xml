@@ -1,0 +1,31 @@
+<odoo>
+    <data>
+        <record id="view_move_form_inherit_base64" model="ir.ui.view">
+            <field name="name">account.move.form.base64</field>
+            <field name="model">account.move</field>
+            <field name="inherit_id" ref="account.view_move_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//sheet" position="inside">
+                    <group>
+                        <field name="invoice_base64" invisible="1"/>
+                        <field name="decoded_invoice_base64" widget="text"/>
+                        <field name="qr_code" widget="image" options="{'size': (256, 256)}"/>
+                    </group>
+                </xpath>
+            </field>
+        </record>
+
+        <record id="view_partner_form_inherit" model="ir.ui.view">
+            <field name="name">res.partner.form.inherit</field>
+            <field name="model">res.partner</field>
+            <field name="inherit_id" ref="base.view_partner_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//sheet/group/group" position="inside">
+                    <field name="parent_iqama"/>
+                    <field name="nationality"/>
+                    <field name="user_type"/>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

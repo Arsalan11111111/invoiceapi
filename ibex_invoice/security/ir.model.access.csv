@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_ibex_invoice_ibex_invoice,ibex_invoice.ibex_invoice,model_ibex_invoice_ibex_invoice,base.group_user,1,1,1,1

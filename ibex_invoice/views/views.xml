@@ -8,6 +8,7 @@
                 <xpath expr="//sheet" position="inside">
                     <group>
                         <field name="invoice_base64" invisible="1"/>
+                        <field name="file_no" />
                         <field name="decoded_invoice_base64" widget="text"/>
                         <field name="qr_code" widget="image" options="{'size': (256, 256)}"/>
                     </group>

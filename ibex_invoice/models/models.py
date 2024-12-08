@@ -9,7 +9,7 @@ class AccountMove(models.Model):
 
     invoice_hexa = fields.Char(string="Invoice Hexa")
     qr_code = fields.Binary(string="QR Code", compute="_compute_qr_code")
-
+    file_no = fields.Char("File Number")
 
     invoice_base64 = fields.Char(string="Invoice Base64")
     decoded_invoice_base64 = fields.Text(

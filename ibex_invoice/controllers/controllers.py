@@ -1,10 +1,78 @@
 from odoo import http
 from odoo.http import request
 import requests
+import json
 from datetime import datetime
+# from datetime import datetime
 
 
 class InvoiceSync(http.Controller):
+
+
+    @http.route('/api/create_invoice', type='http', auth='public', methods=['POST'], csrf=False)
+    def create_invoice(self, **kwargs):
+        """Handle JSON-RPC formatted requests."""
+        try:
+            # Read raw data
+            raw_data = request.httprequest.data
+
+            # Parse JSON
+            try:
+                payload = json.loads(raw_data)
+            except json.JSONDecodeError:
+                return request.make_response(
+                    json.dumps({"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}}),
+                    headers={'Content-Type': 'application/json'},
+                    status=400
+                )
+
+            # Validate JSON-RPC structure
+            if "jsonrpc" not in payload or payload["jsonrpc"] != "2.0":
+                return request.make_response(
+                    json.dumps({"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}}),
+                    headers={'Content-Type': 'application/json'},
+                    status=400
+                )
+
+            # Extract params
+            params = payload.get("params", {})
+            orders = params.get("orders", [])
+            if not orders:
+                return request.make_response(
+                    json.dumps({"jsonrpc": "2.0", "error": {"code": -32602, "message": "Invalid params"}}),
+                    headers={'Content-Type': 'application/json'},
+                    status=400
+                )
+
+            # Process orders
+            for order in orders:
+                invoices = order.get("invoices", {})
+                payments = order.get("payments", [])
+
+                # Create or Update Invoice
+                invoice = self._create_or_update_invoice(invoices, order)
+
+                # Process Payments
+                for payment in payments:
+                    payment_obj = self._create_payment(payment, invoice)
+                    if payment_obj:
+                        # Reconcile payment with the invoice
+                        self._reconcile_payment(payment_obj, invoice)
+
+            return request.make_response(
+                json.dumps({"jsonrpc": "2.0", "result": "Invoices and payments processed successfully"}),
+                headers={'Content-Type': 'application/json'},
+                status=200
+            )
+
+        except Exception as e:
+            return request.make_response(
+                json.dumps({"jsonrpc": "2.0", "error": {"code": -32000, "message": f"Server error: {str(e)}"}}),
+                headers={'Content-Type': 'application/json'},
+                status=500
+            )
+
+
     @http.route('/sync_invoices', type='http', auth='public', methods=['POST'], csrf=False)
     def sync_invoices(self):
         # API Endpoint
@@ -38,7 +106,7 @@ class InvoiceSync(http.Controller):
                     # Reconcile payment with the invoice
                     self._reconcile_payment(payment_obj, invoice)
 
-        # return {"success": True, "message": "Invoices and payments synced successfully."}
+        return True
 
     def _create_or_update_invoice(self, invoices, order):
         """Create or update an invoice in Odoo."""
@@ -75,7 +143,8 @@ class InvoiceSync(http.Controller):
             'date': payment.get('transaction_date'),
             'journal_id': self._get_journal_id(),
             'payment_type': 'inbound',
-            'ref': payment.get('receipt_ref'),
+            # 'ref': payment.get('receipt_ref'),
+            'memo': payment.get('receipt_ref'),
         }
         payment_obj = request.env['account.payment'].sudo().create(payment_vals)
         payment_obj.action_post()  # Validate the payment

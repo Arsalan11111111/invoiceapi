@@ -8,6 +8,89 @@ from datetime import datetime
 
 class InvoiceSync(http.Controller):
 
+    @http.route('/api/create_credit_note', type='json', auth='public', methods=['POST'], csrf=False)
+    def create_credit_note(self, **kwargs):
+        try:
+            # Extract the nested 'invoice_no' from the 'params' key in the request
+            # params = request.jsonrequest.get('params', {})
+            invoice_data = kwargs.get('invoice_no', [])
+
+            # Validate input
+            if not invoice_data:
+                return {"error": "Missing or invalid 'invoice_no' parameter."}
+
+            # Convert the input data to a list of invoices
+            invoice_string = ", ".join([
+                invoice.strip() for item in invoice_data if isinstance(item, dict) and 'invoice' in item
+                for invoice in item['invoice'].split(',')
+            ])
+            # Prepare the API call
+            url = "http://my.ais.sch.sa/arrowad_e_invoice/fetch_credit_note_details"
+            api_params = {"invoice_no[]": invoice_string}
+            headers = {
+                'token': '1SDryVpl7xJ4tx5d',
+                'Cookie': '_fedena_session_=003d64966145758043cc9cea02a3a06d'
+            }
+
+            # Fetch data from the external API
+            response = requests.get(url, headers=headers, params=api_params)
+            api_response = response.json()
+
+            if not api_response.get('isSuccess'):
+                return {"error": api_response.get('errorMessage', "Failed to fetch credit note details.")}
+
+            created_credit_notes = []
+
+            for order in api_response.get('orders', []):
+                invoice_no = order.get('invoice_no')
+                credit_note_data = {
+                    'vat': order.get('vat'),
+                    'credit_note_no': order.get('credit_note_no'),
+                    'amount': order.get('amount'),
+                    'details': order.get('details'),
+                    'net': order.get('net'),
+                    'credit_note_date': order.get('credit_note_date'),
+                    'total': order.get('total'),
+                    'fee_collection': order.get('fee_collection'),
+                }
+
+                # Search for the invoice in Odoo
+                invoice = request.env['account.move'].sudo().search([
+                    ('name', '=', invoice_no),
+                    ('move_type', '=', 'out_invoice')
+                ], limit=1)
+
+                if not invoice:
+                    continue
+
+                # Create the credit note
+                credit_note = request.env['account.move'].sudo().create({
+                    'move_type': 'out_refund',
+                    'ref': credit_note_data['credit_note_no'],
+                    'invoice_date': credit_note_data['credit_note_date'],
+                    'partner_id': invoice.partner_id.id,
+                    'invoice_origin': invoice.name,
+                    'invoice_line_ids': [
+                        (0, 0, {
+                            'name': credit_note_data['details'],
+                            'quantity': 1,
+                            'price_unit': credit_note_data['net'],
+                            'tax_ids': [(6, 0, invoice.invoice_line_ids.mapped('tax_ids').ids)],
+                        })
+                    ],
+                })
+
+                # Post the credit note
+                credit_note.action_post()
+                created_credit_notes.append(credit_note.id)
+
+            return {
+                "success": True,
+                "created_credit_notes": created_credit_notes
+            }
+
+        except Exception as e:
+            return {"error": str(e)}
 
     @http.route('/api/create_invoice', type='http', auth='public', methods=['POST'], csrf=False)
     def create_invoice(self, **kwargs):
@@ -77,7 +160,7 @@ class InvoiceSync(http.Controller):
     def sync_invoices(self):
         # API Endpoint
         api_url = "https://my.ais.sch.sa/arrowad_e_invoice/fetch_invoices_with_payments"
-        params = {"invoice_no": "INV174856"}
+        params = {"invoice_no": "INV154736"}
         headers = {
             'token': '1SDryVpl7xJ4tx5d',
         }
@@ -106,7 +189,7 @@ class InvoiceSync(http.Controller):
                     # Reconcile payment with the invoice
                     self._reconcile_payment(payment_obj, invoice)
 
-        return True
+        # return True
 
     def _create_or_update_invoice(self, invoices, order):
         """Create or update an invoice in Odoo."""
@@ -143,8 +226,8 @@ class InvoiceSync(http.Controller):
             'date': payment.get('transaction_date'),
             'journal_id': self._get_journal_id(),
             'payment_type': 'inbound',
-            # 'ref': payment.get('receipt_ref'),
-            'memo': payment.get('receipt_ref'),
+            'ref': payment.get('receipt_ref'),
+            # 'memo': payment.get('receipt_ref'),
         }
         payment_obj = request.env['account.payment'].sudo().create(payment_vals)
         payment_obj.action_post()  # Validate the payment
@@ -187,3 +270,5 @@ class InvoiceSync(http.Controller):
         """Fetch default journal ID for payments."""
         journal = request.env['account.journal'].sudo().search([('type', '=', 'bank')], limit=1)
         return journal.id
+
+
